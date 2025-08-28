@@ -14,11 +14,6 @@ It provides:
 
 ---
 
-## 📦 Repository Name
-
-**QuestPassthroughHandDiagnostics**
-
----
 
 ## 📜 Scripts Included
 
@@ -86,44 +81,34 @@ Soft reset markers in both logs and HUD:
 ---
 
 
-HUD display shows:
+## 🚀 HUD display shows:
 
-Current scenario
+![com oculus vrshell-20250828-165720](https://github.com/user-attachments/assets/0ae1d8ca-fdf8-42e9-a707-0edaf2c126ca)
 
-Elapsed time
+---
 
-Warmup/Main run phase
-
-Reset count + last reset timestamp
-
-NaN pose counter
-
-Last flagged message (e.g., FrameSetCollator)
-
-Memory (MB)
-
-FPS
-
-⚠️ Notes
+## ⚠️ Notes
 
 During warmup, resets are not executed. They begin once you see:
-
+```bash
 [TEST] Warmup complete.
 [TEST] Entering main run…
-
+```
 
 If you see [Warning] [StabilityTest] Passthrough adapter not available. at startup, that just means the adapter couldn’t find your passthrough component immediately. Once your OVRPassthroughLayer or MetaPassthroughController is active, resets will include passthrough successfully.
 
 For quick verification, shorten intervals:
+```bash
 
 warmupMinutes = 0.05 (~3s)
 
 resetEveryMinutes = 0.2 (~12s)
-
-📝 License
+```
+---
+## 📝 License
 
 MIT (or your choice)
 
-🙌 Credits
+##🙌 Credits
 
 Created to help Quest developers systematically reproduce and demonstrate Passthrough + Hand Tracking stability issues, and to test workarounds like soft resets.
