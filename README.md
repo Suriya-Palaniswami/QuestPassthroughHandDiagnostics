@@ -109,6 +109,6 @@ resetEveryMinutes = 0.2 (~12s)
 
 MIT (or your choice)
 
-##🙌 Credits
+## 🙌 Credits
 
 Created to help Quest developers systematically reproduce and demonstrate Passthrough + Hand Tracking stability issues, and to test workarounds like soft resets.
