@@ -14,11 +14,8 @@ It provides:
 
 ---
 
-## 📦 Repository Name
 
-**QuestPassthroughHandDiagnostics**
 
----
 
 ## 📜 Scripts Included
 
