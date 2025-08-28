@@ -36,6 +36,11 @@ namespace HPS.Stability
         [Header("Adapters")]
         public bool preferOculusIntegrationAdapter = false;
 
+        // Public telemetry for HUD
+        [HideInInspector] public int resetCount = 0;
+        [HideInInspector] public float lastResetAtSeconds = -1f;  // since test start (unscaled)
+        [HideInInspector] public float startedAtRealtime;         // realtimeSinceStartup at test start
+
         XRHandSubsystem _hands;
         IPassthroughAdapter _pt;
 
@@ -44,7 +49,10 @@ namespace HPS.Stability
         void Awake()
         {
             LogFile.Init("quest_hand_passthrough");
-            LogFile.WriteLine($"[TEST] Scenario={scenario} warmup={warmupMinutes}m run={runMinutes}m softReset={enableSoftReset} every={resetEveryMinutes}m");
+            LogFile.WriteLine("[TEST] StabilityTestRunner Awake.");
+            Debug.Log("[StabilityTest] Awake.");
+
+            LogFile.WriteLine($"[TEST] Scenario={scenario} warmup={warmupMinutes}m run={runMinutes}m softReset={enableSoftReset} every={resetEveryMinutes}m resetHands={resetHands} resetPT={resetPassthrough}");
         }
 
         void OnEnable()
@@ -52,14 +60,12 @@ namespace HPS.Stability
             // Subsystems
             _hands = GetHandSubsystem();
 
-            // Choose passthrough adapter (OpenXR Meta vs Oculus Integration).
-            if (preferOculusIntegrationAdapter)
-                _pt = new OculusIntegrationPassthroughAdapter();
-            else
-                _pt = new OpenXRMetaPassthroughAdapter();
+            // Choose passthrough adapter
+            if (preferOculusIntegrationAdapter) _pt = new OculusIntegrationPassthroughAdapter();
+            else _pt = new OpenXRMetaPassthroughAdapter();
 
-            if (_hands==null) Debug.LogWarning("[StabilityTest] XRHandSubsystem not found.");
-            if (_pt == null || !_pt.IsAvailable) Debug.LogWarning("[StabilityTest] Passthrough adapter not available (RGB/Depth controls may be no-op).");
+            if (_hands == null) Debug.LogWarning("[StabilityTest] XRHandSubsystem not found.");
+            if (_pt == null || !_pt.IsAvailable) Debug.LogWarning("[StabilityTest] Passthrough adapter not available.");
 
             _loop = StartCoroutine(RunTest());
         }
@@ -67,44 +73,62 @@ namespace HPS.Stability
         void OnDisable()
         {
             if (_loop != null) StopCoroutine(_loop);
-            // Shutdown passthrough on exit
             _pt?.ShutdownAll();
+            LogFile.WriteLine("[TEST] StabilityTestRunner disabled.");
         }
 
         IEnumerator RunTest()
         {
+            startedAtRealtime = Time.realtimeSinceStartup;
+            resetCount = 0;
+            lastResetAtSeconds = -1f;
+
             yield return StartCoroutine(ApplyScenarioAndWarmup());
 
-            float elapsed = 0f;
-            float nextReset = resetEveryMinutes * 60f;
-            float total = runMinutes * 60f;
-
             LogFile.WriteLine("[TEST] Entering main run…");
+            Debug.Log("[StabilityTest] Entering main run…");
+
+            float start = Time.realtimeSinceStartup;
+            float elapsed = 0f;
+            float total = Mathf.Max(0f, runMinutes) * 60f;
+
+            // schedule first reset strictly after warmup
+            float nextReset = (enableSoftReset && resetEveryMinutes > 0.01f)
+                ? (Time.realtimeSinceStartup - start) + (resetEveryMinutes * 60f)
+                : float.PositiveInfinity;
 
             while (elapsed < total)
             {
-                // Soft reset cadence
-                if (enableSoftReset && elapsed >= nextReset)
+                // Use unscaled time to avoid timescale effects
+                elapsed = Time.realtimeSinceStartup - start;
+
+                if (enableSoftReset && resetEveryMinutes > 0.01f && elapsed >= nextReset)
                 {
-                    yield return StartCoroutine(DoSoftReset());
-                    nextReset += resetEveryMinutes * 60f;
+                    // catch up if we missed multiple intervals
+                    while (elapsed >= nextReset)
+                    {
+                        yield return StartCoroutine(DoSoftReset());
+                        nextReset += resetEveryMinutes * 60f;
+                    }
                 }
 
-                elapsed += Time.deltaTime;
                 yield return null;
             }
 
             LogFile.WriteLine("[TEST] Completed run.");
+            Debug.Log("[StabilityTest] Completed run.");
         }
 
         IEnumerator ApplyScenarioAndWarmup()
         {
             LogFile.WriteLine("[TEST] Applying scenario & warmup…");
+            Debug.Log("[StabilityTest] Applying scenario & warmup…");
 
             // Ensure hands running
             if (_hands != null && !_hands.running)
             {
                 LogFile.WriteLine("[TEST] Starting XRHandSubsystem…");
+                Debug.Log("[StabilityTest] Starting XRHandSubsystem…");
                 _hands.Start();
             }
 
@@ -125,14 +149,21 @@ namespace HPS.Stability
                     break;
             }
 
-            // Warmup
-            yield return new WaitForSeconds(warmupMinutes * 60f);
+            var warm = Mathf.Max(0f, warmupMinutes) * 60f;
+            var warmStart = Time.realtimeSinceStartup;
+            while (Time.realtimeSinceStartup - warmStart < warm)
+                yield return null;
+
             LogFile.WriteLine("[TEST] Warmup complete.");
+            Debug.Log("[StabilityTest] Warmup complete.");
         }
 
         IEnumerator DoSoftReset()
         {
-            LogFile.WriteLine($"[RESET] Initiating soft reset (hands={resetHands}, passthrough={resetPassthrough})…");
+            var tNow = Time.realtimeSinceStartup - startedAtRealtime;
+
+            LogFile.WriteLine($"[RESET] Initiating soft reset (hands={resetHands}, passthrough={resetPassthrough}) at {tNow:F2}s…");
+            Debug.Log($"[StabilityTest] RESET begin (hands={resetHands}, pt={resetPassthrough})");
 
             if (resetHands && _hands != null)
             {
@@ -145,10 +176,11 @@ namespace HPS.Stability
 
             if (resetPassthrough && _pt != null)
             {
-                // Quick toggle: off then back to scenario state
                 LogFile.WriteLine("[RESET] Toggling passthrough off…");
                 _pt.ShutdownAll();
-                yield return new WaitForSeconds(0.25f);
+                // a brief wait to ensure pipeline tears down
+                var end = Time.realtimeSinceStartup + 0.25f;
+                while (Time.realtimeSinceStartup < end) yield return null;
 
                 switch (scenario)
                 {
@@ -168,8 +200,11 @@ namespace HPS.Stability
                 LogFile.WriteLine("[RESET] Passthrough restored to scenario.");
             }
 
-            LogFile.WriteLine("[RESET] Complete.");
-            yield return null;
+            resetCount += 1;
+            lastResetAtSeconds = tNow;
+
+            LogFile.WriteLine($"[RESET] Complete. count={resetCount} lastAt={lastResetAtSeconds:F2}s");
+            Debug.Log($"[StabilityTest] RESET complete. total={resetCount}");
         }
 
         static XRHandSubsystem GetHandSubsystem()

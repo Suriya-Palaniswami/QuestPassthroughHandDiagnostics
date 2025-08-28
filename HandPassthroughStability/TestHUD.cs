@@ -133,6 +133,13 @@ namespace HPS.Stability.UI
                 sb.AppendLine($"Soft Reset: every {runner.resetEveryMinutes:0}m  |  Next in: {ToHms(eta)}");
             }
             else sb.AppendLine("Soft Reset: <i>disabled</i>");
+            // After you print Soft Reset cadence
+            if (runner)
+            {
+                sb.AppendLine($"Resets: {runner.resetCount}");
+                if (runner.lastResetAtSeconds >= 0f)
+                    sb.AppendLine($"Last Reset @ {ToHms(runner.lastResetAtSeconds)}");
+            }
 
             // XR Hands state or OVR fallback
             if (_xrHands != null)
